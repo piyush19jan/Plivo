@@ -21,8 +21,8 @@ class PlivoClient():
     def set_numbers(self, numbers):
         global number1
         global number2
-        number1 = "18883964261"
-        number2 = "18883424094"
+        number1 = numbers[0]
+        number2 = numbers[1]
 
     def get_numbers(self, number):
         if number == 1:

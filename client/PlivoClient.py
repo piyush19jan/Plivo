@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import re
+import base64
 
 class PlivoClient():
 
@@ -17,6 +18,11 @@ class PlivoClient():
         filename = os.path.abspath(os.path.realpath(filename))
         with open(filename) as data_file:
             self.data = json.load(data_file)
+        self.encodedString = base64.b64encode(str.encode(self.data['auth_id']+":"+self.data['auth_token']))
+        self.encodedString = str(self.encodedString, 'utf-8')
+        self.header = {
+            "Authorization": "Basic " + self.encodedString
+        }
 
     def set_numbers(self, numbers):
         global number1
@@ -30,9 +36,9 @@ class PlivoClient():
         else:
             return number2
 
-    def send_search_number_request(self, headers):
+    def send_search_number_request(self):
         search_url = self.search_url.replace("{auth_id}", self.data['auth_id'])
-        response = requests.get(search_url, headers=headers)
+        response = requests.get(search_url, headers=self.header)
         print(response.status_code)
         print(response.json)
         return response
@@ -55,11 +61,12 @@ class PlivoClient():
         data_dict = json.loads(response)
         return data_dict
 
-    def send_buy_number_request(self, headers):
+    def send_buy_number_request(self):
         buy_url1 = self.buy_url.replace("{number}", self.get_numbers(1)).replace("{auth_id}", self.data['auth_id'])
         buy_url2 = self.buy_url.replace("{number}", self.get_numbers(2)).replace("{auth_id}", self.data['auth_id'])
-        response1 = requests.post(buy_url1, headers=headers)
-        response2 = requests.post(buy_url2, headers=headers)
+        self.header.update({"Content-Type": "application/json"})
+        response1 = requests.post(buy_url1, headers=self.header)
+        response2 = requests.post(buy_url2, headers=self.header)
         resp_dict = {"response1": response1, "response2": response2}
         return resp_dict
 
@@ -80,14 +87,15 @@ class PlivoClient():
         assert resp_data2['numbers'][0]['status'] == 'Success'
         assert re.match(pattern, resp_data2['api_id'])
 
-    def make_outbound_call_request(self, headers):
+    def make_outbound_call_request(self):
         call_url = self.call_url.replace("{auth_id}", self.data['auth_id'])
         payload = {}
         payload['from'] = "18883964261"
         payload['to'] = "18883424094"
         payload['answer_url'] = "https://s3.amazonaws.com/plivosamplexml/speak_url.xml"
         payload_json = json.dumps(payload)
-        response = requests.post(call_url, data=payload_json, headers=headers)
+        self.header.update({"Content-Type": "application/json"})
+        response = requests.post(call_url, data=payload_json, headers=self.header)
         return response
 
     def verify_make_outboud_call_response(self, response):
@@ -97,9 +105,9 @@ class PlivoClient():
         assert resp_data['message'] == 'call fired'
         assert re.match(pattern, resp_data['request_uuid'])
 
-    def get_ongoing_live_calls(self, headers):
+    def get_ongoing_live_calls(self):
         live_call_url = self.live_calls_url.replace("{auth_id}", self.data['auth_id'])
-        response = requests.get(live_call_url, headers=headers)
+        response = requests.get(live_call_url, headers=self.header)
         return response
 
     def verify_ongoing_live_call_response(self, response):
@@ -110,10 +118,10 @@ class PlivoClient():
         call_uuid = resp_data['calls'][0]
         print(call_uuid)
 
-    def get_live_call_details(self, headers):
+    def get_live_call_details(self):
         live_call_detail_url =self.live_call_details_url.replace("{auth_id}", self.data['auth_id']).replace("{call_uuid}", call_uuid)
         print(live_call_detail_url)
-        response = requests.get(live_call_detail_url, headers=headers)
+        response = requests.get(live_call_detail_url, headers=self.header)
         return response
 
     def verify_live_call_details_response(self, response):

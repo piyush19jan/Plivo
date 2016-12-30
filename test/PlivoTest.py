@@ -1,4 +1,5 @@
 import unittest
+import json
 
 from proboscis import TestProgram
 from proboscis import test
@@ -45,7 +46,7 @@ class PlivoTest(unittest.TestCase):
         print("########### Starting test for getting live call detials ###########")
         client = PlivoClient.PlivoClient()
         response = client.get_live_call_details()
-        client.verify_live_call_details_response(response)
+        client.verify_live_call_details_response(json.loads(response.content))
         print("########### Ended test for getting live call detials ###########")
 
 TestProgram().run_and_exit()

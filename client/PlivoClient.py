@@ -3,14 +3,16 @@ import json
 import os
 import re
 import base64
+from numbers import Number
+import time
 
 class PlivoClient():
 
     search_url = "https://api.plivo.com/v1/Account/{auth_id}/PhoneNumber/?country_iso=US"
     buy_url = "https://api.plivo.com/v1/Account/{auth_id}/PhoneNumber/{number}/"
     call_url = "https://api.plivo.com/v1/Account/{auth_id}/Call/"
-    live_calls_url = "https://api.plivo.com/v1/Account/{auth_id}/Call/?status=live"
-    live_call_details_url = "https://api.plivo.com/v1/Account/{auth_id}/Call/{call_uuid}/?status=live"
+    live_calls_url = "https://api.plivo.com/v1/Account/{auth_id}/Call/"
+    live_call_details_url = "https://api.plivo.com/v1/Account/{auth_id}/Call/{call_uuid}/"
 
     def __init__(self):
         fileDir = os.path.dirname(os.path.realpath('__file__'))
@@ -46,6 +48,7 @@ class PlivoClient():
     def verify_search_number_request(self, response):
         assert response.status_code == 200
         resp = response.content
+        print(resp)
         data_dict = json.loads(resp)
         number_list = data_dict['objects'][0:2]
         numbers = []
@@ -74,8 +77,8 @@ class PlivoClient():
         pattern = "^[a-zA-Z0-9-]*$"
         assert response['response1'].status_code == 201
         assert response['response2'].status_code == 201
-        resp_data1 = json.loads(response['response1'])
-        resp_data2 = json.loads(response['response1'])
+        resp_data1 = json.loads(response['response1'].content)
+        resp_data2 = json.loads(response['response2'].content)
         assert resp_data1['message'] == 'created'
         assert resp_data1['status'] == 'fulfilled'
         assert resp_data1['numbers'][0]['number'] == self.get_numbers(1)
@@ -90,8 +93,8 @@ class PlivoClient():
     def make_outbound_call_request(self):
         call_url = self.call_url.replace("{auth_id}", self.data['auth_id'])
         payload = {}
-        payload['from'] = "18883964261"
-        payload['to'] = "18883424094"
+        payload['from'] = self.get_numbers(1)
+        payload['to'] = self.get_numbers(2)
         payload['answer_url'] = "https://s3.amazonaws.com/plivosamplexml/speak_url.xml"
         payload_json = json.dumps(payload)
         self.header.update({"Content-Type": "application/json"})
@@ -101,7 +104,7 @@ class PlivoClient():
     def verify_make_outboud_call_response(self, response):
         pattern = "^[a-zA-Z0-9-]*$"
         assert response.status_code == 201
-        resp_data = json.loads(response)
+        resp_data = json.loads(response.content)
         assert resp_data['message'] == 'call fired'
         assert re.match(pattern, resp_data['request_uuid'])
 
@@ -111,12 +114,16 @@ class PlivoClient():
         return response
 
     def verify_ongoing_live_call_response(self, response):
+        pattern = "^[+0-9-]*$"
         global call_uuid
         assert response.status_code == 200
-        resp_data = json.loads(response)
-        assert len(resp_data['calls']) > 0
-        call_uuid = resp_data['calls'][0]
-        print(call_uuid)
+        resp_data = json.loads(response.content)
+        assert len(resp_data['objects']) > 0
+        assert resp_data['meta']['total_count'] == len(resp_data['objects'])
+        call_uuid = resp_data['objects'][0]['call_uuid']
+        call_detail = resp_data['objects']
+        for data in call_detail:
+            self.verify_live_call_details_response(data)
 
     def get_live_call_details(self):
         live_call_detail_url =self.live_call_details_url.replace("{auth_id}", self.data['auth_id']).replace("{call_uuid}", call_uuid)
@@ -125,16 +132,19 @@ class PlivoClient():
         return response
 
     def verify_live_call_details_response(self, response):
-        pattern = "^[a-zA-Z0-9-]*$"
-        assert response.status_code == 200
-        resp_data = json.loads(response)
-        assert resp_data['direction'] == 'inbound'
-        assert resp_data['from'] == self.get_numbers(1)
-        assert resp_data['to'] == self.get_numbers(2)
-        assert resp_data['call_status'] == 'in-progress'
-        assert re.match(pattern, resp_data['api_id'])
-        assert resp_data['caller_name'] == "+" + self.get_numbers(1)
-        assert re.match(pattern, resp_data['call_uuid'])
+        pattern = "^[+0-9-]*$"
+        assert isinstance(response['bill_duration'], Number)
+        assert isinstance(response['billed_duration'], Number)
+        assert isinstance(response['call_duration'], Number)
+        assert response['call_direction'] == 'inbound' or response['call_direction'] == 'outbound'
+        assert response['call_uuid'] in response['resource_uri']
+        assert re.match(pattern, response['from_number'])
+        assert re.match(pattern, response['to_number'])
+        time.strptime(response['answer_time'].split('+')[0], '%Y-%m-%d %H:%M:%S')
+        time.strptime(response['initiation_time'].split('+')[0], '%Y-%m-%d %H:%M:%S')
+        time.strptime(response['end_time'].split('+')[0], '%Y-%m-%d %H:%M:%S')
+        assert isinstance(float(response['total_amount']), Number)
+        assert isinstance(float(response['total_rate']), Number)
 
 
 
